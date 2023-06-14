@@ -106,6 +106,8 @@ export class YSocketIO extends Observable<string> {
 
       const doc = await this.initDocument(namespace, socket.nsp, this.configuration?.gcEnabled)
 
+      this.emit('connection', [socket, doc])
+
       this.initSyncListeners(socket, doc)
       this.initAwarenessListeners(socket, doc)
 
