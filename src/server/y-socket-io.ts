@@ -238,7 +238,7 @@ export class YSocketIO extends Observable<string> {
    */
   private readonly initSocketListeners = (socket: Socket, doc: Document): void => {
     socket.on('disconnect', async () => {
-      if ((await socket.nsp.allSockets()).size === 0) {
+      if ((await socket.nsp.fetchSockets()).length === 0) {
         this.emit('all-document-connections-closed', [doc])
         if (this.persistence != null) {
           await this.persistence.writeState(doc.name, doc)
