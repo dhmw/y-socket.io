@@ -29,7 +29,7 @@ const ysocketio = new YSocketIO(io, {
   //   })
   // },
 
-  // levelPersistenceDir: './storage-location',
+  // persistenceProvider: new PersistenceProvider(),
   // gcEnabled: true,
 })
 

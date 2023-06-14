@@ -18,7 +18,7 @@ Y-socket.io features:
 
 - Configuration and customization of the server side.
 - Easy implementation of your authentication.
-- Ability to enable document persistence with LevelDB.
+- Ability to enable document persistence with a PersistenceProvider.
 - Ability to add custom callbacks at different points in a document's life cycle as shown below.
 - Cross-tab communication, i.e. when opening the same document in more than one tab, changes are also transmitted via cross-tab communication (broadcast channel and localstorage as an alternative).
 - Awareness information exchange.
@@ -124,8 +124,8 @@ configuration = {
   // For example: if client sent a token or other data, you can get it from auth object of 
   //              socket.io handshake
   authenticate: undefined, // Example: (handshake) => handshake.auth.token === 'valid-token')
-  // Optionally, enable LevelDB persistence by setting the directory where you want to store the database (by default the LevelDB persistence is disabled)
-  levelPersistenceDir: undefined,
+  // Optionally, enable persistence by passing a provider implementation
+  persistenceProvider: undefined,
   // Enable/Disable garbage collection (by default the garbage collection is enabled)
   gcEnabled: true,
 }

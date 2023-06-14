@@ -1,23 +1,31 @@
 import * as Y from 'yjs'
 import { Namespace, Server, Socket } from 'socket.io'
 import * as AwarenessProtocol from 'y-protocols/awareness'
-import { LeveldbPersistence } from 'y-leveldb'
 import { Document } from './document'
 import { Observable } from 'lib0/observable'
 
 /**
- * Level db persistence object
+ * Persistence implementation interface
+ */
+export interface PersistenceProvider {
+  getYDoc(docName: string): Promise<Y.Doc>
+  storeUpdate(docName: string, newUpdates: Uint8Array): Promise<void>
+  flushDocument(docName: string): Promise<void>
+}
+
+/**
+ * Persistence config object
  */
 export interface Persistence {
   bindState: (docName: string, ydoc: Document) => void
   writeState: (docName: string, ydoc: Document) => Promise<any>
-  provider: any
+  provider: PersistenceProvider
 }
 
 /**
  * YSocketIO instance cofiguration. Here you can configure:
  * - gcEnabled: Enable/Disable garbage collection (default: gc=true)
- * - levelPersistenceDir: The directory path where the persistent Level database will be stored
+ * - persistenceProvider: Instance of a PersistenceProvider implementation
  * - authenticate: The callback to authenticate the client connection
  */
 export interface YSocketIOConfiguration {
@@ -26,9 +34,9 @@ export interface YSocketIOConfiguration {
    */
   gcEnabled?: boolean
   /**
-   * The directory path where the persistent Level database will be stored
+   * The persistence provider
    */
-  levelPersistenceDir?: string
+  persistenceProvider?: PersistenceProvider
   /**
    * Callback to authenticate the client connection.
    *
@@ -51,10 +59,6 @@ export class YSocketIO extends Observable<string> {
    */
   private readonly io: Server
   /**
-   * @type {string | undefined | null}
-   */
-  private readonly _levelPersistenceDir: string | undefined | null = null
-  /**
    * @type {Persistence | null}
    */
   private persistence: Persistence | null = null
@@ -69,13 +73,12 @@ export class YSocketIO extends Observable<string> {
    * @param {Server} io Server instance from Socket IO
    * @param {YSocketIOConfiguration} configuration (Optional) The YSocketIO configuration
    */
-  constructor (io: Server, configuration?: YSocketIOConfiguration) {
+  constructor(io: Server, configuration?: YSocketIOConfiguration) {
     super()
 
     this.io = io
 
-    this._levelPersistenceDir = configuration?.levelPersistenceDir ?? process.env.YPERSISTENCE
-    if (this._levelPersistenceDir != null) this.initLevelDB(this._levelPersistenceDir)
+    if (configuration?.persistenceProvider) this.initPersistence(configuration.persistenceProvider)
 
     this.configuration = configuration
   }
@@ -89,7 +92,7 @@ export class YSocketIO extends Observable<string> {
    *  It also starts socket connection listeners.
    * @type {() => void}
    */
-  public initialize (): void {
+  public initialize(): void {
     const dynamicNamespace = this.io.of(/^\/yjs\|.*$/)
 
     dynamicNamespace.use(async (socket, next) => {
@@ -118,7 +121,7 @@ export class YSocketIO extends Observable<string> {
    * this way when you destroy the document you are also closing any existing connection on the document.
    * @type {Map<string, Document>}
    */
-  public get documents (): Map<string, Document> {
+  public get documents(): Map<string, Document> {
     return this._documents
   }
 
@@ -126,7 +129,7 @@ export class YSocketIO extends Observable<string> {
    * This method creates a yjs document if it doesn't exist in the document map. If the document exists, get the map document.
    *
    *  - If document is created:
-   *      - Binds the document to LevelDB if LevelDB persistence is enabled.
+   *      - Binds the document to persistence provider instance.
    *      - Adds the new document to the documents map.
    *      - Emit the `document-loaded` event
    * @private
@@ -135,7 +138,7 @@ export class YSocketIO extends Observable<string> {
    * @param {boolean} gc Enable/Disable garbage collection (default: gc=true)
    * @returns {Promise<Document>} The document
    */
-  private async initDocument (name: string, namespace: Namespace, gc: boolean = true): Promise<Document> {
+  private async initDocument(name: string, namespace: Namespace, gc: boolean = true): Promise<Document> {
     const doc = this._documents.get(name) ?? (new Document(name, namespace, {
       onUpdate: (doc, update) => this.emit('document-update', [doc, update]),
       onChangeAwareness: (doc, update) => this.emit('awareness-update', [doc, update]),
@@ -156,20 +159,21 @@ export class YSocketIO extends Observable<string> {
   /**
    * This method sets persistence if enabled.
    * @private
-   * @param {string} levelPersistenceDir The directory path where the persistent Level database is stored
+   * @param {PersistenceProvider} provider The persistence provider instance
    */
-  private initLevelDB (levelPersistenceDir: string): void {
-    const ldb = new LeveldbPersistence(levelPersistenceDir)
+  private initPersistence(provider: PersistenceProvider): void {
     this.persistence = {
-      provider: ldb,
+      provider,
       bindState: async (docName: string, ydoc: Document) => {
-        const persistedYdoc = await ldb.getYDoc(docName)
+        const persistedYdoc = await provider.getYDoc(docName)
         const newUpdates = Y.encodeStateAsUpdate(ydoc)
-        await ldb.storeUpdate(docName, newUpdates)
+        await provider.storeUpdate(docName, newUpdates)
         Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(persistedYdoc))
-        ydoc.on('update', async (update: Uint8Array) => await ldb.storeUpdate(docName, update))
+        ydoc.on('update', async (update: Uint8Array) => await provider.storeUpdate(docName, update))
       },
-      writeState: async (_docName: string, _ydoc: Document) => { }
+      writeState: async (docName: string, _ydoc: Document) => {
+        await provider.flushDocument(docName);
+      }
     }
   }
 
@@ -226,7 +230,7 @@ export class YSocketIO extends Observable<string> {
    *
    *  When a client has been disconnected, check the clients connected to the document namespace,
    *  if no connection remains, emit the `all-document-connections-closed` event
-   *  parameters and if LevelDB persistence is enabled, persist the document in LevelDB and destroys it.
+   *  parameters and if persistence is enabled, persist the document in the provider and destroys it.
    * @private
    * @type {(socket: Socket, doc: Document) => void}
    * @param {Socket} socket The socket connection

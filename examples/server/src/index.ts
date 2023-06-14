@@ -21,7 +21,7 @@ const io = new Server(server)
 // TIP: You can export a new instance from another file to manage as singleton and access documents from all app.
 const ysocketio = new YSocketIO(io, {
   // authenticate: (auth) => auth.token === 'valid-token',
-  // levelPersistenceDir: './storage-location',
+  // persistenceProvider: new PersistenceProvider(),
   // gcEnabled: true,
 })
 

@@ -2,9 +2,10 @@ import { defineConfig } from 'tsup'
 
 export default defineConfig({
   entryPoints: [
-    'src/index.ts', 
+    'src/index.ts',
     'src/server/index.ts',
-    'src/server/server.ts'
+    'src/server/server.ts',
+    'src/server/persistence.ts'
   ],
   outDir: 'dist',
   format: ['esm', 'cjs'],
